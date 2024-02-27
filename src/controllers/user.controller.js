@@ -153,5 +153,41 @@ const logOutUser = asyncHandler(async (req,res) => {
     );
 });
 
+const refreshAccessToken = asyncHandler(async (req,res) => {
+     const incomingRegreshToken =
+       req.cookies.refreshToken || req.body.refreshToken;
+     if (!incomingRegreshToken) {
+       throw new apiError(400, "Invalid Refresh token");
+     }
 
-export { loggedInUser, registerUser, logOutUser };
+     const decodedToken = jwt.verify(
+       incomingRegreshToken,
+       process.env.REFRESH_TOKEN_SECRET
+     );
+     if (!decodedToken) {
+       throw new apiError(400, "Invalid Refresh token");
+     }
+     const user = await User.findById(decodedToken._id);
+     if (!user) {
+       throw new apiError(404, "User not found");
+     }
+     if (user.refreshToken !== incomingRegreshToken) {
+       throw new apiError(400, "Invalid Refresh token");
+     }
+     const { accessToken, refreshToken } =
+       await gererateAccessAndRefreshTokens(user);
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+        new apiResponse(200,{
+            accessToken, refreshToken
+        },"Access token refreshed successfully")
+    );  
+});
+export { loggedInUser, registerUser, logOutUser, refreshAccessToken};
