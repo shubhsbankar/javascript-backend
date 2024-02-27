@@ -309,6 +309,69 @@ const updateCoverImageFile = asyncHandler(async (req, res) => {
       .json(new apiResponse(200, user, "Avatar file updated successfully"));
   });
 
+  const getUserChannelProfile = asyncHandler(async(req, res) => {
+      const userName = req.param;
+      if (!userName) {
+            throw new apiError(400, "Invalid username param");
+      }
+      
+      const channel = await User.aggregate([
+            {
+                $match:
+                {
+                    userName : userName
+                }
+            },
+            {
+                $lookup:
+                {
+                    from: "subscriptions",
+                    localField: "_id",
+                    foreignField: "channel",
+                    as: "subscribers"
+                }
+            },
+            {
+                $lookup:
+                {
+                    from: "subscriptions",
+                    localField: "_id",
+                    foreignField: "subscriber",
+                    as: "subscriptions"          
+                }
+            },
+            {
+                $addFields:
+                {
+                    subscriberCount: {$size: "$subscribers"},
+                    subscriptionCount: {$size: "$subscriptions"},
+                    isSubscribed: {
+                        $in: [req.user?._id, "$subscribers.subscriber"]
+                    }
+                }
+            },
+            {
+                $project:{
+                    fullName,
+                    userName,
+                    email,
+                    avatar,
+                    coverImage,
+                    subscriberCount,
+                    subscriptionCount,
+                    isSubscribed
+                }
+            }
+
+      ]);
+        if (!channel) {
+                throw new apiError(404, "Channel not found");
+        }
+        return res
+        .status(200)
+        .json(new apiResponse(200, channel[0], "Channel details fetched successfully"));
+    });
+
 export {
   loggedInUser,
   registerUser,
@@ -318,5 +381,6 @@ export {
   getCurrentUser,
   updateAccountDetails,
   updateCoverImageFile,
-  updateAvatarFile
+  updateAvatarFile,
+  getUserChannelProfile
 };
