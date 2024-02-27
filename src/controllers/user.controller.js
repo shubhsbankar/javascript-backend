@@ -352,14 +352,14 @@ const updateCoverImageFile = asyncHandler(async (req, res) => {
             },
             {
                 $project:{
-                    fullName,
-                    userName,
-                    email,
-                    avatar,
-                    coverImage,
-                    subscriberCount,
-                    subscriptionCount,
-                    isSubscribed
+                    fullName : 1,
+                    userName : 1,
+                    email : 1,
+                    avatar : 1,
+                    coverImage : 1,
+                    subscriberCount : 1,
+                    subscriptionCount : 1,
+                    isSubscribed : 1
                 }
             }
 
@@ -372,6 +372,55 @@ const updateCoverImageFile = asyncHandler(async (req, res) => {
         .json(new apiResponse(200, channel[0], "Channel details fetched successfully"));
     });
 
+const getUserWatchHistory = asyncHandler(async (req, res) =>{
+         const user = User.aggregate([
+          {
+            $match:{
+              _id: new mongoose.Types.ObjectId(req.user._id) 
+            }
+          },
+          {
+            $lookup: {
+              from: "videos",
+              localField: "watchHistory",
+              foreignField: "_id",
+              as: "watchHistory",
+              pipeline:[
+                {
+                  $lookup: {
+                    from: "users",
+                    localField: "owner",
+                    foreignField: "_id",
+                    as: "owner",
+                    pipeline:[
+                      {
+                        $project:{
+                                  fullName: 1,
+                                  userName: 1,
+                                  avatar: 1
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  $addFields: {
+                    owner: {
+                      $first: "$onwer"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+         ]);
+         return res
+         .status(200)
+         .json (
+          new apiResponse(200,user[0].watchHistory,"Watch history fetched successfully")
+         );
+})
+
 export {
   loggedInUser,
   registerUser,
@@ -382,5 +431,6 @@ export {
   updateAccountDetails,
   updateCoverImageFile,
   updateAvatarFile,
-  getUserChannelProfile
+  getUserChannelProfile,
+  getUserWatchHistory
 };
