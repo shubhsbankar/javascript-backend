@@ -1,5 +1,6 @@
 import {v2 as cloudinary} from 'cloudinary';
 import fs from 'fs'          
+import { apiError } from './apiErrors.js';
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -23,4 +24,18 @@ const uploadOnCloudinary = async(localFilePath) => {
       }
 }
 
-export { uploadOnCloudinary }
+const deleteFromCloudinary = async(path) =>{
+  try{
+    if (!path) return null;
+
+       const slashIndex = path.lastIndexOf("/");
+       const dotIndex = path.lastIndexOf(".");
+       await cloudinary.uploader.destroy(path.substring(slashIndex+1,dotIndex));
+  }
+  catch(error)
+  {
+    console.log("Got error while deleting old file : ", error);
+  }
+}
+
+export { uploadOnCloudinary, deleteFromCloudinary }

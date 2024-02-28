@@ -1,8 +1,11 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiError } from "../utils/apiErrors.js";
 import { User } from "../models/user.model.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { apiResponse } from "../utils/apiResponse.js";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+
 
 const gererateAccessAndRefreshTokens = async (user) => {
   try {
@@ -33,7 +36,7 @@ const registerUser = asyncHandler(async (req, res) => {
   // return res
 
   const { userName, email, fullName, password } = req.body;
-  console.log("email : ", email);
+  console.log("req : ", req);
   if (
     [userName, email, fullName, password].some((item) => item?.trim() === "")
   ) {
@@ -48,7 +51,7 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const avatarLoacalPath = req.files?.avatar[0]?.path;
-
+  
   //const coverImageLocalPath = req.files?.coverImage[0]?.path;
   let coverImageLocalPath;
   if (
@@ -58,6 +61,7 @@ const registerUser = asyncHandler(async (req, res) => {
   ) {
     coverImageLocalPath = req.files.coverImage[0].path;
   }
+ 
   if (!avatarLoacalPath) {
     throw new apiError(400, "Avatar file is required");
   }
@@ -161,8 +165,9 @@ const logOutUser = asyncHandler(async (req, res) => {
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRegreshToken =
     req.cookies.refreshToken || req.body.refreshToken;
+    console.log(req.body);
   if (!incomingRegreshToken) {
-    throw new apiError(400, "Invalid Refresh token");
+    throw new apiError(400, "Invalid Refresh token received in request");
   }
 
   const decodedToken = jwt.verify(
@@ -170,14 +175,14 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     process.env.REFRESH_TOKEN_SECRET
   );
   if (!decodedToken) {
-    throw new apiError(400, "Invalid Refresh token");
+    throw new apiError(400, "Invalid decoded Refresh token");
   }
   const user = await User.findById(decodedToken._id);
   if (!user) {
     throw new apiError(404, "User not found");
   }
   if (user.refreshToken !== incomingRegreshToken) {
-    throw new apiError(400, "Invalid Refresh token");
+    throw new apiError(400, "Invalid Refresh token as it is not maching with database");
   }
   const { accessToken, refreshToken } =
     await gererateAccessAndRefreshTokens(user);
@@ -203,6 +208,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
 const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
+  console.log(req.body);
+  console.log(currentPassword, newPassword);
   if (!currentPassword || !newPassword) {
     throw new apiError(400, "Current password and new password are required");
   }
@@ -229,7 +236,8 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
   const { fullName, email } = req.body;
-  if (!fullName || !email) {
+  console.log(req.body)
+  if (!fullName && !email) {
     throw new apiError(400, "Full name or email is required");
   }
   const user = await User.findByIdAndUpdate(
@@ -257,12 +265,12 @@ const updateAvatarFile = asyncHandler(async (req, res) => {
   if (!avatarLocalPath) {
     throw new apiError(400, "Avatar file missing");
   }
-
+  deleteFromCloudinary(req.user?.avatar);
   const avatar = await uploadOnCloudinary(avatarLocalPath);
   if (!avatar) {
     throw new apiError(500, "Failed to upload avatar file");
   }
-
+  
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
@@ -286,7 +294,7 @@ const updateCoverImageFile = asyncHandler(async (req, res) => {
     if (!coverImageLocalPath) {
       throw new apiError(400, "Cover Image file missing");
     }
-  
+    deleteFromCloudinary(req.user?.coverImage);
     const coverImage = await uploadOnCloudinary(coverImageLocalPath);
     if (!coverImage) {
       throw new apiError(500, "Failed to upload Cover Image file");
@@ -373,7 +381,7 @@ const updateCoverImageFile = asyncHandler(async (req, res) => {
     });
 
 const getUserWatchHistory = asyncHandler(async (req, res) =>{
-         const user = User.aggregate([
+         const user = await User.aggregate([
           {
             $match:{
               _id: new mongoose.Types.ObjectId(req.user._id) 
@@ -406,7 +414,7 @@ const getUserWatchHistory = asyncHandler(async (req, res) =>{
                 {
                   $addFields: {
                     owner: {
-                      $first: "$onwer"
+                      $first: "$owner"
                     }
                   }
                 }
@@ -414,12 +422,33 @@ const getUserWatchHistory = asyncHandler(async (req, res) =>{
             }
           }
          ]);
+         console.log(user);
          return res
          .status(200)
          .json (
-          new apiResponse(200,user[0].watchHistory,"Watch history fetched successfully")
+          new apiResponse(200,user[0]?.watchHistory,"Watch history fetched successfully")
          );
-})
+});
+
+
+const updateUserWatchHistory = asyncHandler (async (req,res) => {
+  const {videoId} = req.body
+  console.log(videoId)
+  if (!videoId)
+  {
+      throw new apiError(400,"Video id is required");
+  }
+  console.log(req.user?.watchHistory)
+  const _id = new mongoose.Types.ObjectId(videoId);
+  req.user?.watchHistory.push(_id);
+  console.log(req.user?.watchHistory)
+  await req.user?.save({ validateBeforeSave: false });
+  return res
+  .status(200)
+  .json(
+    new apiResponse(200, {}, "Updated watch history for user : " + req.user.userName)
+  );
+});
 
 export {
   loggedInUser,
@@ -432,5 +461,6 @@ export {
   updateCoverImageFile,
   updateAvatarFile,
   getUserChannelProfile,
-  getUserWatchHistory
+  getUserWatchHistory,
+  updateUserWatchHistory
 };
